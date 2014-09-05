@@ -122,6 +122,7 @@ typedef enum {
 #ifdef SOFT_VOLUME
     SOFT_VOLUME_PARAMS,
 #endif
+    DEVICE_NAME,
 } section_t;
 
 typedef void (* section_process_fn)(const XML_Char **attr);
@@ -162,6 +163,7 @@ static void process_audio_source_delay(const XML_Char **attr);
 #ifdef SOFT_VOLUME
 static void process_soft_volume_params(const XML_Char **attr);
 #endif
+static void process_device_name(const XML_Char **attr);
 
 static section_process_fn section_table[] = {
     [ROOT] = process_root,
@@ -190,6 +192,7 @@ static section_process_fn section_table[] = {
 #ifdef SOFT_VOLUME
     [SOFT_VOLUME_PARAMS] = process_soft_volume_params,
 #endif
+    [DEVICE_NAME] = process_device_name,
 };
 
 static section_t section;
@@ -1373,7 +1376,38 @@ static void process_custom_mtmx_params(const XML_Char **attr)
     }
 
     platform_add_custom_mtmx_params((void *)my_data.platform, &mtmx_params_info);
+}
 
+static void process_device_name(const XML_Char **attr)
+{
+    int index;
+
+    if (strcmp(attr[0], "name") != 0) {
+        ALOGE("%s: 'name' not found, no alias set!", __func__);
+        goto done;
+    }
+
+    index = platform_get_snd_device_index((char *)attr[1]);
+    if (index < 0) {
+        ALOGE("%s: Device %s in platform info xml not found, no alias set!",
+              __func__, attr[1]);
+        goto done;
+    }
+
+    if (strcmp(attr[2], "alias") != 0) {
+        ALOGE("%s: Device %s in platform info xml has no alias, no alias set!",
+              __func__, attr[1]);
+        goto done;
+    }
+
+    if (platform_set_snd_device_name(index, attr[3]) < 0) {
+        ALOGE("%s: Device %s, alias %s was not set!",
+              __func__, attr[1], attr[3]);
+        goto done;
+    }
+
+done:
+    return;
 }
 
 static void start_tag(void *userdata __unused, const XML_Char *tag_name,
@@ -1422,11 +1456,13 @@ static void start_tag(void *userdata __unused, const XML_Char *tag_name,
         } else if (strcmp(tag_name, "soft_vol_params") == 0) {
             section = SOFT_VOLUME_PARAMS;
 #endif
+        } else if (strcmp(tag_name, "device_names") == 0) {
+            section = DEVICE_NAME;
 		} else if (strcmp(tag_name, "device") == 0) {
             if ((section != ACDB) && (section != AEC) && (section != NS) && (section != MMSECNS) &&
                 (section != BACKEND_NAME) && (section != BITWIDTH) &&
-                (section != INTERFACE_NAME) && (section != OPERATOR_SPECIFIC)) {
-                ALOGE("device tag only supported for acdb/backend names/bitwitdh/interface names");
+                (section != INTERFACE_NAME) && (section != OPERATOR_SPECIFIC) && (section != DEVICE_NAME)) {
+                ALOGE("device tag only supported for acdb/backend names/bitwidth/interface/operator specific/device names");
                 return;
             }
 
@@ -1645,6 +1681,8 @@ static void end_tag(void *userdata __unused, const XML_Char *tag_name)
         section = ROOT;
     } else if (strcmp(tag_name, "custom_mtmx_param_in_chs") == 0) {
         section = CUSTOM_MTMX_IN_PARAMS;
+    } else if (strcmp(tag_name, "device_names") == 0) {
+        section = ROOT;
     }
 }
 
